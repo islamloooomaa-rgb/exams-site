@@ -45,11 +45,19 @@
   ];
   for (let i = 1; i <= 12; i++) GRADES.push({ key: String(i), label: 'الصف ' + i });
 
+  // النوع: لفصل متابعة البنين عن البنات في الإحصائيات والتقارير
+  const GENDERS = [
+    { key: 'm', label: 'بنين' },
+    { key: 'f', label: 'بنات' },
+  ];
+
   const mapOf = (list) => Object.fromEntries(list.map((x) => [x.key, x]));
   const SUBJECT_MAP = mapOf(SUBJECTS);
   const STATUS_MAP = mapOf(STATUSES);
   const PLATFORM_MAP = mapOf(PLATFORMS);
   const GRADE_MAP = mapOf(GRADES);
+  const GENDER_MAP = mapOf(GENDERS);
+  const genderLabel = (k) => (GENDER_MAP[k] ? GENDER_MAP[k].label : '');
 
   const subjectLabel = (k) => (SUBJECT_MAP[k] ? SUBJECT_MAP[k].label : k);
   const statusLabel = (k) => (STATUS_MAP[k] ? STATUS_MAP[k].label : k);
@@ -127,7 +135,9 @@
     const name = clean(input.name, 120);
     const grade = clean(input.grade, 10);
     const section = clean(input.section, 20);
+    const gender = clean(input.gender, 2);
     if (name.length < 2) throw new ValidationError('يرجى إدخال اسم الطالب (حرفان على الأقل).');
+    if (gender && !GENDER_MAP[gender]) throw new ValidationError('النوع غير صحيح.');
     if (!GRADE_MAP[grade]) throw new ValidationError('يرجى اختيار الصف.');
     if (!section) throw new ValidationError('يرجى إدخال الشعبة.');
     const subjects = Array.isArray(input.subjects) ? input.subjects : [];
@@ -136,7 +146,7 @@
       if (!SUBJECT_MAP[s]) throw new ValidationError('مادة غير معروفة: ' + s);
       if (!uniq.includes(s)) uniq.push(s);
     }
-    return { name, grade, section, subjects: uniq };
+    return { name, grade, section, gender, subjects: uniq };
   }
 
   /**
@@ -237,12 +247,13 @@
     .replace(/[ً-ْـ]/g, '')
     .trim();
 
-  /** filters: { q, grade, section, subject, status, onlyMissing } */
+  /** filters: { q, gender, grade, section, subject, status, onlyMissing } */
   function filterRows(rows, f) {
     f = f || {};
     const q = normalizeArabic(f.q);
     return rows.filter(({ student, exam }) => {
       if (q && !normalizeArabic(student.name).includes(q)) return false;
+      if (f.gender && student.gender !== f.gender) return false;
       if (f.grade && student.grade !== f.grade) return false;
       if (f.section && student.section !== f.section) return false;
       if (f.subject && exam.subject !== f.subject) return false;
@@ -341,7 +352,7 @@
     const ids = new Set();
     return obj.students.map((s, i) => {
       const base = validateStudentInput({
-        name: s.name, grade: s.grade, section: s.section,
+        name: s.name, grade: s.grade, section: s.section, gender: s.gender,
         subjects: (s.exams || []).map((e) => e.subject),
       });
       const id = clean(s.id, 64) || ('s' + i + '_' + Date.now().toString(36));
@@ -363,7 +374,7 @@
         return e;
       });
       return {
-        id, name: base.name, grade: base.grade, section: base.section,
+        id, name: base.name, grade: base.grade, section: base.section, gender: base.gender,
         createdAt: s.createdAt || new Date().toISOString(),
         updatedAt: s.updatedAt || new Date().toISOString(),
         exams,
@@ -386,9 +397,9 @@
   }
 
   return {
-    SUBJECTS, STATUSES, PLATFORMS, GRADES,
-    SUBJECT_MAP, STATUS_MAP, PLATFORM_MAP, GRADE_MAP,
-    subjectLabel, statusLabel, gradeLabel, platformLabel, classLabel,
+    SUBJECTS, STATUSES, PLATFORMS, GRADES, GENDERS,
+    SUBJECT_MAP, STATUS_MAP, PLATFORM_MAP, GRADE_MAP, GENDER_MAP,
+    subjectLabel, statusLabel, gradeLabel, genderLabel, platformLabel, classLabel,
     ValidationError, isValidUrl, normalizeUrl, detectPlatform,
     newExam, validateStudentInput, applyExamPatch,
     parseStudentLines, sameStudent,

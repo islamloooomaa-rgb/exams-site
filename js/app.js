@@ -95,16 +95,22 @@
   }
 
   /* ================= state ================= */
+  // اختيار "بنين / بنات" يُحفظ على هذا الجهاز ويُطبق على كل الصفحات معًا
+  const GENDER_KEY = 'ep_gender';
+  let savedGender = '';
+  try { savedGender = localStorage.getItem(GENDER_KEY) || ''; } catch (e) { /* storage unavailable */ }
+  if (!L.GENDER_MAP[savedGender]) savedGender = '';
+
   const state = {
     user: null,
     students: [],
     settings: { schoolName: '', termName: '', teacherPortalEnabled: false },
     route: 'dashboard',
     filters: {
-      dashboard: { grade: '', subject: '' },
-      students: { q: '', grade: '' },
-      submissions: { q: '', grade: '', subject: '', status: '', onlyMissing: false },
-      reports: { q: '', grade: '', subject: '', status: '', onlyMissing: false, kind: 'full' },
+      dashboard: { gender: savedGender, grade: '', subject: '' },
+      students: { q: '', gender: savedGender, grade: '' },
+      submissions: { q: '', gender: savedGender, grade: '', subject: '', status: '', onlyMissing: false },
+      reports: { q: '', gender: savedGender, grade: '', subject: '', status: '', onlyMissing: false, kind: 'full' },
     },
     charts: [],
     pendingRender: false,
@@ -389,15 +395,22 @@
       const ev = el.type === 'checkbox' || el.tagName === 'SELECT' ? 'change' : 'input';
       el.addEventListener(ev, () => {
         filters[k] = el.type === 'checkbox' ? el.checked : el.value;
+        if (k === 'gender') setGender(el.value);
         onChange();
       });
     });
+  }
+
+  function setGender(g) {
+    for (const f of Object.values(state.filters)) if ('gender' in f) f.gender = g;
+    try { if (g) localStorage.setItem(GENDER_KEY, g); else localStorage.removeItem(GENDER_KEY); } catch (e) { /* ignore */ }
   }
 
   function filterBar(f, opts) {
     opts = opts || {};
     return `<div class="card filters">
       ${'q' in f ? `<div class="search">${icon('search')}<input class="input" data-f="q" value="${esc(f.q)}" placeholder="ابحث باسم الطالب…" aria-label="البحث باسم الطالب"></div>` : ''}
+      ${'gender' in f ? `<select class="input" data-f="gender" aria-label="بنين أو بنات">${options(L.GENDERS, f.gender, 'البنين والبنات')}</select>` : ''}
       ${'grade' in f ? `<select class="input" data-f="grade" aria-label="الصف">${options(L.GRADES, f.grade, 'كل الصفوف')}</select>` : ''}
       ${'subject' in f ? `<select class="input" data-f="subject" aria-label="المادة">${options(L.SUBJECTS, f.subject, 'كل المواد')}</select>` : ''}
       ${'status' in f ? `<select class="input" data-f="status" aria-label="حالة الاختبار">${options(L.STATUSES, f.status, 'كل الحالات')}</select>` : ''}
@@ -565,14 +578,15 @@
     }
     const f = state.filters.students;
     const q = L.normalizeArabic(f.q);
-    const list = state.students.filter((s) => (!f.grade || s.grade === f.grade) && (!q || L.normalizeArabic(s.name).includes(q)));
+    const list = state.students.filter((s) => (!f.gender || s.gender === f.gender) && (!f.grade || s.grade === f.grade) && (!q || L.normalizeArabic(s.name).includes(q)));
     const noSubj = state.students.filter((s) => !s.exams.length).length;
-    box.innerHTML = `<div class="result-count">${list.length} طالب${noSubj ? ` — <b style="color:#a24a22">${noSubj} طالب لم تُحدد مواده بعد</b> (اضغط "تعديل" لتحديد المواد)` : ''}</div>` + (list.length ? `<div class="card table-wrap"><table class="tbl responsive"><thead><tr>
+    const noGender = state.students.filter((s) => !s.gender).length;
+    box.innerHTML = `<div class="result-count">${list.length} طالب${noSubj ? ` — <b style="color:#a24a22">${noSubj} طالب لم تُحدد مواده بعد</b> (اضغط "تعديل" لتحديد المواد)` : ''}${noGender ? ` — <b style="color:#a24a22">${noGender} طالب لم يُحدد نوعه (بنين/بنات)</b>` : ''}</div>` + (list.length ? `<div class="card table-wrap"><table class="tbl responsive"><thead><tr>
       <th>اسم الطالب</th><th>الصف والشعبة</th><th>المواد المطلوبة</th><th>حالة التسليم</th><th></th></tr></thead><tbody>
       ${list.map((s) => {
         const c = L.computeStats(L.examRows([s])).totals;
         return `<tr><td data-label="الطالب"><b>${esc(s.name)}</b></td>
-          <td data-label="الصف والشعبة" class="nowrap">${esc(L.classLabel(s))}</td>
+          <td data-label="الصف والشعبة" class="nowrap">${esc(L.classLabel(s))}${s.gender ? ` <span class="chip">${esc(L.genderLabel(s.gender))}</span>` : ''}</td>
           <td data-label="المواد">${s.exams.length ? s.exams.map((e) => `<span class="chip">${esc(L.subjectLabel(e.subject))}</span>`).join('')
             : `<span class="badge st-needs_revision"><span class="dot"></span>لم تُحدد المواد بعد</span>`}</td>
           <td data-label="التسليم">${s.exams.length ? `<div class="mini-progress"><div class="progress"><span style="width:${c.deliveryRate}%"></span></div><span class="small nowrap">${c.delivered}/${c.total}</span></div>` : '<span class="muted">—</span>'}</td>
@@ -592,6 +606,7 @@
         <label class="fld full">اسم الطالب<input class="input" name="name" required maxlength="120" value="${esc(editing ? student.name : '')}"></label>
         <label class="fld">الصف<select class="input" name="grade" required>${options(L.GRADES, editing ? student.grade : '', 'اختر الصف')}</select></label>
         <label class="fld">الشعبة<input class="input" name="section" required maxlength="20" value="${esc(editing ? student.section : '')}" placeholder="مثال: 1 أو أ"></label>
+        <label class="fld">النوع<select class="input" name="gender">${options(L.GENDERS, editing ? (student.gender || '') : (state.filters.students.gender || ''), 'اختر: بنين أو بنات')}</select></label>
         <div class="fld full"><span>المواد المطلوبة</span>
           <div style="display:flex;gap:8px;flex-wrap:wrap"><select class="input" id="subj-pick" style="flex:1;min-width:180px" aria-label="اختر مادة"></select>
           <button type="button" class="btn" id="subj-add">${icon('plus')} إضافة المادة</button>
@@ -617,7 +632,7 @@
     $('#subj-all', el).addEventListener('click', () => { subjects = L.SUBJECTS.map((s) => s.key).filter((k) => subjects.includes(k)).concat(L.SUBJECTS.map((s) => s.key).filter((k) => !subjects.includes(k))); draw(); });
     const save = async () => {
       const fd = Object.fromEntries(new FormData($('#f-stu', el)));
-      const input = { name: fd.name, grade: fd.grade, section: fd.section, subjects };
+      const input = { name: fd.name, grade: fd.grade, section: fd.section, gender: fd.gender || '', subjects };
       try {
         L.validateStudentInput(input);
       } catch (e) { $('#f-err', el).textContent = e.message; return; }
@@ -647,6 +662,7 @@
       wide: true,
       body: `<p class="muted small" style="margin-top:0">الصق أسماء الطلاب، كل طالب في سطر، متبوعًا بالصف/الشعبة. مثال:<br><span style="color:var(--text)">سعيد جمعة سعيد النعيمي 5/2</span></p>
         <textarea class="input" id="bulk-text" rows="9" placeholder="اسم الطالب 5/2"></textarea>
+        <label class="fld" style="margin-top:12px;max-width:320px">النوع لجميع الطلاب في القائمة<select class="input" id="bulk-gender">${options(L.GENDERS, state.filters.students.gender || '', 'اختر: بنين أو بنات')}</select></label>
         <div class="fld" style="margin-top:12px"><span>المواد المطلوبة لجميع الطلاب في القائمة (اختياري — يمكن تحديدها لاحقًا لكل طالب)</span>
           <div style="display:flex;gap:8px;flex-wrap:wrap"><select class="input" id="bulk-pick" style="flex:1;min-width:180px" aria-label="اختر مادة"></select>
           <button type="button" class="btn btn-ghost" id="bulk-all">كل المواد</button></div>
@@ -683,7 +699,7 @@
       try {
         for (const p of fresh) {
           btn.textContent = `جارٍ الإضافة… ${done + 1}/${fresh.length}`;
-          upsertStudent(await S.createStudent(Object.assign({}, p, { subjects })));
+          upsertStudent(await S.createStudent(Object.assign({}, p, { subjects, gender: $('#bulk-gender', el).value })));
           done++;
         }
         m.close();

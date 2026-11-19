@@ -9,6 +9,7 @@
   function filterDescription(f) {
     const parts = [];
     if (f.q) parts.push('بحث: ' + f.q);
+    if (f.gender) parts.push('الطلاب ' + L.genderLabel(f.gender));
     if (f.grade) parts.push(L.gradeLabel(f.grade));
     if (f.subject) parts.push(L.subjectLabel(f.subject));
     if (f.status) parts.push(L.statusLabel(f.status));
