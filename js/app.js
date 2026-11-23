@@ -34,6 +34,7 @@
     alert: '<circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>',
     clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
     key: '<circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"/>',
+    copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
     inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
   };
   const icon = (n) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] || ''}</svg>`;
@@ -740,9 +741,54 @@
     const f = state.filters.submissions;
     v.innerHTML = pageHead('تسليم روابط الاختبارات',
       'أدخل رابط الاختبار والمنصة الموجود عليها أمام كل مادة — يُحفظ الرابط تلقائيًا ويُسجَّل تاريخ ووقت التسليم.') +
-      filterBar(f) + '<div id="sub-body"></div>';
+      daamPromptCard() + filterBar(f) + '<div id="sub-body"></div>';
+    bindDaamPrompt(v);
     bindFilters(v, f, () => drawSubmissions($('#sub-body')));
     drawSubmissions($('#sub-body'));
+  }
+
+  /* ---- أمر متطلبات منصة دعم (للنسخ إلى Claude) ---- */
+  let daamLang = 'ar';
+  function daamPromptCard() {
+    const P = window.EP_DAAM_PROMPT;
+    if (!P) return '';
+    return `<details class="card prompt-card section-gap" id="daam-card">
+      <summary><span class="prompt-title">${icon('report')} أمر متطلبات منصة دعم</span>
+        <span class="muted small">انسخ الأمر والصقه في Claude مع الخطة التعليمية وكتاب المادة وقالب الاختبار، لإعداد المذكرة واختبار نهاية الفصل.</span></summary>
+      <div class="prompt-body">
+        <div class="prompt-tools">
+          <div class="seg" role="group" aria-label="لغة الأمر">
+            <button type="button" class="btn btn-sm" data-lang="ar" aria-pressed="${daamLang === 'ar'}">العربية</button>
+            <button type="button" class="btn btn-sm" data-lang="en" aria-pressed="${daamLang === 'en'}">English</button>
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" id="daam-copy">${icon('copy')} <span>نسخ الأمر</span></button>
+        </div>
+        <textarea class="input prompt-text" id="daam-text" readonly rows="14" aria-label="نص الأمر"></textarea>
+      </div></details>`;
+  }
+  function bindDaamPrompt(v) {
+    const P = window.EP_DAAM_PROMPT;
+    const card = $('#daam-card', v);
+    if (!P || !card) return;
+    const ta = $('#daam-text', card);
+    const show = () => {
+      ta.value = P[daamLang];
+      ta.dir = daamLang === 'ar' ? 'rtl' : 'ltr';
+      ta.scrollTop = 0;
+      $$('[data-lang]', card).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lang === daamLang)));
+      $('#daam-copy span', card).textContent = daamLang === 'ar' ? 'نسخ الأمر' : 'Copy prompt';
+    };
+    show();
+    $$('[data-lang]', card).forEach((b) => b.addEventListener('click', () => { daamLang = b.dataset.lang; show(); }));
+    $('#daam-copy', card).addEventListener('click', async () => {
+      const text = P[daamLang];
+      let ok = false;
+      try { await navigator.clipboard.writeText(text); ok = true; } catch (e) {
+        try { ta.focus(); ta.select(); ok = document.execCommand('copy'); } catch (e2) { ok = false; }
+      }
+      toast(ok ? (daamLang === 'ar' ? 'تم نسخ الأمر. الصقه في Claude.' : 'Prompt copied. Paste it into Claude.')
+        : 'تعذر النسخ تلقائيًا. حدد النص وانسخه يدويًا.', ok ? 'ok' : 'bad');
+    });
   }
 
   function drawSubmissions(box) {
